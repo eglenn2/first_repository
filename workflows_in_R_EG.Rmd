@@ -1,0 +1,288 @@
+---
+title: "Workflows in R"
+author: "Rob Chavez"
+date: "5/9/2019"
+output: 
+  html_document: 
+    highlight: tango
+    theme: flatly
+    toc: yes
+    toc_float: yes
+---
+
+In this section, we are going to be discussing some general "workflows" that you may find helpful in organizing your research. Here we will discuss a few topics, including:
+
+* RStudio Projects
+* Working with file structures,data input/output, and scripts
+* Git/GitHub
+
+**If you don't have a GitHub account or Git installed on your computer, you will need that before starting.**
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# RStudio Project
+
+Projects are a great way to organize your workflow. When you create a project, it is saved within a directory (either new or existing) that helps organize related files and scripts. Opening a project sets the working directory to that designated space, making it easier to share project directories with others. There’s additional added benefits:
+
+* you don't have to set the working directory
+* you can set preferences for that environment
+* saving history specific to that project
+* auto-saves within project directory
+
+## Starting fresh
+When working with data, in your code you must set the directory paths in order to access data and save data, scripts, and documentation. 
+
+This can be done with the `setwd()` command and a typical script might begin looing something like this:
+
+```{r setwd, eval=FALSE}
+library(tidyverse)
+
+# set directory
+setwd("~/Google Drive/Teaching/PSY_607_data_science/2019s/mycode/")
+
+# clear global environment
+rm(list = ls())
+
+```
+
+However, there two problems here. 
+
+1. The `setwd()` is idiosyncratic to my computer and not helpful to other sharing in on the project. 
+2. The `rm(list = ls())` is considered bad form and may not actually do what you want it to.
+
+(See [here](https://www.tidyverse.org/articles/2017/12/workflow-vs-script/) for detailed discussion.)
+
+## Create a new project
+Instead let's start with a project. 
+
+
+![](https://d33wubrfki0l68.cloudfront.net/87562c4851bf4d0b0c8415dc9d6690493572e362/a6685/screenshots/rstudio-project-1.png)
+
+![](https://d33wubrfki0l68.cloudfront.net/0fa791e2621be297cb9c5cac0b2802223e3d7714/57d89/screenshots/rstudio-project-2.png)
+![](https://d33wubrfki0l68.cloudfront.net/dee6324df1f5c5121d1c1e9eed822ee52c87167b/1f325/screenshots/rstudio-project-3.png)
+
+Using a project will set all analyses and code with the working directory as the project directory. This makes it easy to keep everything together and access your code and data. Moreover, it will make analyses easy for sharing because you can use **relative paths** seamlessly. This helps when sharing across opperating systems too. From here, you can add all kinds of things to your projects that RStudio can interface with including:
+
+* Rmarkdown docs
+* R scripts
+* text files
+* Python scripts
+* much more!
+
+
+## sourcing custom functions
+We have writen custom functions before and often they are very useful in practice. However, they can clutter up an analysis notebook. Instead of defining them within the analysis itself, you can define them in their own R script then load (AKA "source") them from a separate file when you need them using `source()`. Here is an exmple from the current project.
+
+```{r}
+# load and define custom functions from separate R script
+source("custom_functions.R")
+
+# create random numbers
+numbers <- c(2,4,7,3,6,4,5)
+
+# use functions
+mean_rob(numbers)
+se_rob(numbers)
+
+```
+
+
+
+**Let's go through an example of how to do this**
+
+* Create a new project
+* Save a script
+
+
+# System I/O and data workflows
+
+Often it is helpful to manage all of your data within R itself programmatically and have a record of what you have done. Here are a few pointers for dealing with file structures,data input/output, and scripts.
+
+## Combining individual subject's data
+In Psychology, each subject's data is often stored in its own directory. However, it might be desired to load each subject data into the environment one by one for some analyses. There are a variety of helpful functions for writing and navigating directories in R, including:
+
+* `list.files()` or `dir()` -- makes character vector of file names
+* `dir.exists()`  -- logical asking if the directory exists (helpful for not writing over things)
+* `dir.create()`  -- creates directory
+* `file.remove()` -- be careful! It doesn't give warnings.
+* several other `file.*` commands for interacting with the OS for dealing with files
+
+### load individual subject's data
+In the example below, we have three subjects each with two runs of data. Here we want to look to see if the the conditions were in the same order across subjects for *run1* only. 
+
+```{r , warning=FALSE, message=FALSE}
+library(tidyverse)
+
+# create list of subject names
+subjects <- list.files("emo_study")
+print(subjects)
+
+# define relative paths for loop
+study_dir <- "emo_study/"
+
+# create loop to load subject's data into Global environment
+for(sub in subjects){
+    data_file <-  list.files(paste0(study_dir, sub), pattern = "run1.csv") # finds the .csv for each subject
+    path_tmp <- paste0(study_dir, sub, "/", data_file) # create path to load
+    df_tmp <- read_csv(path_tmp)  # reads .csv
+    assign(paste0(sub,"_df"), df_tmp) # renames in the Global environment
+}
+
+head(sub001_df, 3)
+head(sub002_df, 3)
+head(sub003_df, 3)
+```
+
+Let's do it again but get all of the files in the directory except for the 'log' file
+```{r warning=FALSE, message=FALSE}
+# create list of subject names
+subjects <- list.files("emo_study")
+
+# define relative paths for loop
+study_dir <- "emo_study/"
+
+# create loop to load subject's data into Global environment
+for(sub in subjects){
+    data_file <-  list.files(paste0(study_dir, sub), pattern = "*.csv") # finds both .csv files for each subject
+    path_tmp <- paste0(study_dir, sub, "/", data_file) # create path to load
+    
+    # loop over runs
+    for(run in path_tmp){
+    df_tmp <- read_csv(run)  # reads .csv
+    label <- str_sub(run,18, -5 ) # splits string to keep the run number only
+    assign(paste0(sub,"_", label, "_df"), df_tmp) # renames in the Global environment
+    }
+}
+
+head(sub001_run1_df,3)
+head(sub001_run2_df,3)
+```
+
+### combine individual subjects data into one data frame
+If your subject's data all of the same variable names, it is simple to combine them all into a single file that you can wrangle for various analyses. This can save tons of times and lines of code.
+
+For example:
+```{r warning=FALSE, message=FALSE}
+# create list of subject names
+subjects <- list.files("emo_study")
+
+# define relative paths for loop
+study_dir <- "emo_study/"
+
+# loop over subjects/runs to load data into a single data frame
+
+df <- data.frame()  # define empty data frame
+
+for(sub in subjects){
+    data_file <-  list.files(paste0(study_dir, sub), pattern = "*.csv") # finds both .csv files for each subject
+    path_tmp <- paste0(study_dir, sub, "/", data_file) # create path to load
+    
+    # loop over runs
+    for(run in path_tmp){
+    df_tmp <- read_csv(run)  # reads .csv
+    df <- rbind(df,df_tmp)
+    }
+}
+
+# summarise response by condition per subject, averaging across runs
+df %>% 
+  group_by(ID, condition) %>% 
+  summarise(mean_condition = mean(response))
+```
+
+
+
+# Git & GitHub
+
+Git is an open source version control system. GitHub is the most popular of several cloud-based hosting service for Git repositories (GitLab and BitBucket are others). 
+
+There are several different ways to incorporate Git/Github into your workflow, including a commandline interface and GUI. Here I am going to show you how to do most of it through RStudio.
+
+## Create and initialize a new repository
+The first step is to go to your git up page anc create a new repository on GitHub.
+
+* login to your Gitup and select new repository
+* name the repository
+* ether link it to an existing project
+* or start from scratch
+
+### First, make a new repo.
+
+![](https://i.imgur.com/9PUE2fe.png)
+
+### Next, name it.
+
+![](https://i.imgur.com/YXlLwhl.png)
+
+### Initialize
+
+The next part might differ slightly based on your opperating system. Nonetheless, you will be presented with some options to enter depending on whether or not your directory is pre-existing. 
+
+![](https://i.imgur.com/tER7Xkx.png)
+
+As long as you have Git installed, you can enter these commands into the Terminal Tab in RStudio directly.
+![](https://i.imgur.com/oDywNIU.png)
+
+#### Commit, discription, and push.
+Once you are ready to push your updates to GitHub, you will need to send a commit with a description before pushing the update to GitHub. You can do this within RStudio in the Git tab.
+
+![](https://i.imgur.com/z2IRfd0.png)
+
+Make a description for your updates.
+
+![](https://i.imgur.com/DdKbbUM.png)
+
+
+Once you do that, you are finally ready to push your updates! 
+
+
+# Mini-hacks
+## Mini-hack 1: Make a project and push it to GitHub
+For the first hack, make a RStudio project. In its directory, also include:
+
+* a README.md file that says something about your project
+* a very simple R script (e.g. "hello world" level)
+
+Next, push this project and its directory to your GitHub page. Once you have done that, enter the link to this repository below so that I can find it:
+```{r}
+https://github.com/eglenn2/first_repository
+```
+
+## Mini-hack 2: Split data into unique directories using code
+
+For this hack, within your new GitHub repo you just made, you will need to use the `datasets:CO2` data, split the data up, and save the splits into their own directories. This should all be done using R code. Here's the steps:
+
+* load CO2 the data
+* make a CO2 directory within your project directory
+* make a directory for each variable in the 'Type' column of the CO2 data within the new CO2 directory
+* split the C02 data frame by Type and save each subset into its corresponding directory
+* push these to your GitHub repo so I can see them
+
+Show your code here:
+```{r}
+# load data
+CO2 <- datasets::CO2
+wd<- getwd()
+CO_path <- paste0(wd,"/CO2")
+dir.create(CO_path)
+Type_var <- unique(CO2$Type)
+
+for (i in Type_var) {
+  tmp_wd <- paste0(CO_path, "/",i)
+  dir.create(tmp_wd)
+  data <- filter(CO2, Type == i)
+  
+  name <- (paste0(i, "_data"))
+  assign(name, data)
+  path <- paste0(tmp_wd, "/", name, ".csv") 
+  write_csv(get(name), path) 
+}
+
+```
+
+
+
+
+
